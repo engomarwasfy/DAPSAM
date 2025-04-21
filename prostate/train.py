@@ -7,6 +7,7 @@ import torch
 import torch.backends.cudnn as cudnn
 
 from segment_anything import sam_model_registry
+from fundus.segment_anything.modeling.adapter.AttentionAdapter import AttentionAdapter # Import AttentionAdapter
 
 from trainer import trainer_prostate
 
@@ -94,7 +95,8 @@ if __name__ == "__main__":
     sam, img_embedding_size = sam_model_registry[args.vit_name](image_size=args.img_size,
                                                                 num_classes=args.num_classes,
                                                                 checkpoint=args.ckpt, pixel_mean=[0, 0, 0],
-                                                                pixel_std=[1, 1, 1])
+                                                                pixel_std=[1, 1, 1],
+                                                                adapter_type=AttentionAdapter) # Pass adapter_type
 
 
     net = sam.cuda()

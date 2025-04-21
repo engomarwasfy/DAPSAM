@@ -67,6 +67,7 @@ class ImageEncoderViT(nn.Module):
         window_size: int = 0,
         out_indices: Tuple[int, ...] = (),
         global_attn_indexes: Tuple[int, ...] = (),
+        adapter_type: Type[nn.Module] = LAdapter,  # Add adapter_type parameter with default value
     ) -> None:
         """
         Args:
@@ -86,6 +87,7 @@ class ImageEncoderViT(nn.Module):
             window_size (int): Window size for window attention blocks.
             global_attn_indexes (list): Indexes for blocks using global attention.
         """
+
         super().__init__()
         self.img_size = img_size
 
@@ -140,9 +142,10 @@ class ImageEncoderViT(nn.Module):
 
         self.scale_factor = 4
         self.embed_dim = embed_dim
-        self.l_adapter = LAdapter(self.scale_factor,
-                                                self.embed_dim,
-                                                depth)
+        self.l_adapter = adapter_type(
+            self.scale_factor, self.embed_dim, depth
+        )  # Instantiate adapter based on adapter_type
+
         self.scale = 0.5
     def forward(self, x: torch.Tensor) :
         inp = x

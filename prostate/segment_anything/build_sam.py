@@ -10,7 +10,9 @@ from torch.nn import functional as F
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
+from fundus.segment_anything.modeling.adapter.AttentionAdapter import AttentionAdapter
 
+from segment_anything.modeling.adapter.LAdapter import LAdapter
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
                     checkpoint=None):
@@ -79,6 +81,7 @@ def _build_sam(
         pixel_mean,
         pixel_std,
         checkpoint=None,
+        adapter_type=LAdapter,  # Add adapter_type parameter with default value
 ):
     prompt_embed_dim = 256
     image_size = image_size
@@ -98,6 +101,7 @@ def _build_sam(
             global_attn_indexes=encoder_global_attn_indexes,
             window_size=14,
             out_chans=prompt_embed_dim,
+            adapter_type=adapter_type,  # Pass adapter_type to ImageEncoderViT
         ),
         # prompt_encoder=PromptEncoder(
         #     embed_dim=prompt_embed_dim,
