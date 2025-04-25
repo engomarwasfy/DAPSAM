@@ -31,7 +31,7 @@ parser.add_argument('--max_epochs', type=int,
 parser.add_argument('--stop_epoch', type=int,
                     default=160, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
-                    default=8, help='batch_size per gpu')
+                    default=4, help='batch_size per gpu')
 parser.add_argument('--num_workers', type=int, default=8)
 parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
 parser.add_argument('--deterministic', type=int, default=1,

@@ -1,0 +1,4 @@
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu111
+CUDA_VISIBLE_DEVICES=0 python train.py --root_path ../datasets/Processed_data_nii --output ../output1 --Source_Dataset RUNMC --Target_Dataset BIDMC BMC HK I2CVB UCL
+CUDA_VISIBLE_DEVICES=0 python train.py --root_path ../datasets/RIGAPlus --output output2 --Source_Dataset BinRushed --Target_Dataset MESSIDOR_Base1 MESSIDOR_Base2 MESSIDOR_Base3

@@ -112,7 +112,7 @@ class PrototypePromptGenerate(nn.Module):
         cos_sim_map = F.cosine_similarity(info_proto, feature, dim=1, eps=1e-7)  # b x h x w
         cos_sim_map = cos_sim_map.unsqueeze(1)# b x 1 x h x w
 
-        prompt = self.fuse_conv(torch.concat([feature, info_proto, cos_sim_map], dim=1))
+        prompt = self.fuse_conv(torch.cat([feature, info_proto, cos_sim_map], dim=1))
 
         sparse_embeddings = torch.empty((1, 0, C), device=device)
         return sparse_embeddings, prompt
