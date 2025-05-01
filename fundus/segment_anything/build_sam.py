@@ -12,13 +12,17 @@ from functools import partial
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
 
+from .modeling.adapter.SelfAttentionAdapter import SelfAttentionAdapter
+
+
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
-                    checkpoint=None):
+                    checkpoint=None,):
     return _build_sam(
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
+        adapter=SelfAttentionAdapter,
         checkpoint=checkpoint,
         num_classes=num_classes,
         image_size=image_size,
@@ -78,6 +82,7 @@ def _build_sam(
         image_size,
         pixel_mean,
         pixel_std,
+        adapter=None,
         checkpoint=None,
 ):
     prompt_embed_dim = 256
@@ -86,6 +91,7 @@ def _build_sam(
     image_embedding_size = image_size // vit_patch_size  # Divide by 16 here
     sam = Sam(
         image_encoder=ImageEncoderViT(
+            adapter=adapter,
             depth=encoder_depth,
             embed_dim=encoder_embed_dim,
             img_size=image_size,
@@ -96,7 +102,8 @@ def _build_sam(
             qkv_bias=True,
             use_rel_pos=True,
             global_attn_indexes=encoder_global_attn_indexes,
-            window_size=14,
+            
+            window_size=14, 
             out_chans=prompt_embed_dim,
         ),
         # prompt_encoder=PromptEncoder(
@@ -134,10 +141,17 @@ def _build_sam(
             new_state_dict = load_from(sam, state_dict, image_size, vit_patch_size)
             sam.load_state_dict(new_state_dict)
 
-        for name, value in sam.image_encoder.named_parameters():
-            # freeze backbone except adapter
-            if "adapter" not in name:#Adapter
+        for name, value in sam.image_encoder.named_parameters(): 
+            if "adapter" not in name:  # Adapter
                 value.requires_grad = False
+        if adapter is not None:
+            sam.image_encoder.adapter = adapter(input_dim=encoder_embed_dim)
+            
+            
+
+    return sam, image_embedding_size
+
+
 
     return sam, image_embedding_size
 

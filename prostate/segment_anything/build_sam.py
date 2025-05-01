@@ -1,3 +1,5 @@
+from .adapter.SelfAttentionAdapter import SelfAttentionAdapter
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
@@ -15,12 +17,13 @@ from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTr
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
                     checkpoint=None):
     return _build_sam(
+        adapter=SelfAttentionAdapter,
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
-        checkpoint=checkpoint,
         num_classes=num_classes,
+        checkpoint=checkpoint,
         image_size=image_size,
         pixel_mean=pixel_mean,
         pixel_std=pixel_std
@@ -31,14 +34,14 @@ build_sam = build_sam_vit_h
 
 
 def build_sam_vit_l(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
-                    checkpoint=None):
+                    checkpoint=None, ):
     return _build_sam(
         encoder_embed_dim=1024,
         encoder_depth=24,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[5, 11, 17, 23],
-        checkpoint=checkpoint,
         num_classes=num_classes,
+        checkpoint=checkpoint,
         image_size=image_size,
         pixel_mean=pixel_mean,
         pixel_std=pixel_std
@@ -78,6 +81,7 @@ def _build_sam(
         image_size,
         pixel_mean,
         pixel_std,
+        adapter=None,
         checkpoint=None,
 ):
     prompt_embed_dim = 256
@@ -98,6 +102,7 @@ def _build_sam(
             global_attn_indexes=encoder_global_attn_indexes,
             window_size=14,
             out_chans=prompt_embed_dim,
+            adapter = adapter,
         ),
         # prompt_encoder=PromptEncoder(
         #     embed_dim=prompt_embed_dim,

@@ -13,7 +13,6 @@ from typing import Optional, Tuple, Type
 from segment_anything.modeling.adapter.Adapter import Adapter
 from segment_anything.modeling.adapter.LAdapter import LAdapter
 
-
 class MLPBlock(nn.Module):
     def __init__(
         self,
@@ -65,6 +64,7 @@ class ImageEncoderViT(nn.Module):
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
+        adapter = None,
         out_indices: Tuple[int, ...] = (),
         global_attn_indexes: Tuple[int, ...] = (),
     ) -> None:
@@ -88,6 +88,7 @@ class ImageEncoderViT(nn.Module):
         """
         super().__init__()
         self.img_size = img_size
+        self.adapter = adapter(input_dim=embed_dim) if adapter else None
 
 
         self.patch_embed = PatchEmbed(
@@ -146,16 +147,16 @@ class ImageEncoderViT(nn.Module):
         self.scale = 0.5
     def forward(self, x: torch.Tensor) :
         inp = x
-        x = self.patch_embed(x)
 
+        x = self.patch_embed(x)
         N, H, W, C = x.shape
         if self.pos_embed is not None:
             x = x + self.pos_embed
-
-        embedding_feature = self.l_adapter.init_embeddings(x)
-
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
+            
+            if self.adapter :
+                x = self.adapter(x)
             prompt = self.l_adapter(i, x, embedding_feature)#
             x = prompt.reshape(B, H, W, -1) + x
             x = blk(x, embedding_feature)#
@@ -223,8 +224,8 @@ class Block(nn.Module):
             H, W = x.shape[1], x.shape[2]
             x, pad_hw = window_partition(x, self.window_size)
 
-        x = self.attn(x)
-        # Reverse window partition
+            x = self.attn(x)
+            # Reverse window partition
         if self.window_size > 0:
             x = window_unpartition(x, self.window_size, pad_hw, (H, W))
 
@@ -460,6 +461,7 @@ def sam_vit_base_patch16(image_size):
     image_embedding_size = image_size // vit_patch_size
     encoder_embed_dim = 768
     encoder_depth = 12
+
     encoder_num_heads = 12
     encoder_global_attn_indexes = [2, 5, 8, 11]
 

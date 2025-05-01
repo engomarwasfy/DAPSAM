@@ -67,6 +67,7 @@ class ImageEncoderViT(nn.Module):
         window_size: int = 0,
         out_indices: Tuple[int, ...] = (),
         global_attn_indexes: Tuple[int, ...] = (),
+        adapter=None,
     ) -> None:
         """
         Args:
@@ -103,6 +104,10 @@ class ImageEncoderViT(nn.Module):
             self.pos_embed = nn.Parameter(
                 torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim)
             )
+
+        self.adapter = None
+        if adapter is not None: # the new adapter is instantiated with the correct parameters
+            self.adapter = adapter(input_dim=embed_dim, num_heads = embed_dim // 2)
 
         self.blocks = nn.ModuleList()
         for i in range(depth):
@@ -143,24 +148,32 @@ class ImageEncoderViT(nn.Module):
         self.l_adapter = LAdapter(self.scale_factor,
                                                 self.embed_dim,
                                                 depth)
-        self.scale = 0.5
-    def forward(self, x: torch.Tensor) :
+        self.scale = 0.5 
+
+
+
+
+    def forward(self, x: torch.Tensor):
         inp = x
         x = self.patch_embed(x)
 
         N, H, W, C = x.shape
         if self.pos_embed is not None:
             x = x + self.pos_embed
-
-        embedding_feature = self.l_adapter.init_embeddings(x)
-
+        
+        #embedding_feature = self.l_adapter.init_embeddings(x)
+        
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
-            prompt = self.l_adapter(i, x, embedding_feature)#
-            x = prompt.reshape(B, H, W, -1) + x
-            x = blk(x, embedding_feature)#
+            #prompt = self.l_adapter(i, x, embedding_feature)#
+            #x = prompt.reshape(B, H, W, -1) + x
+            x = blk(x)#
 
-        x = self.neck(x.permute(0, 3, 1, 2))
+
+        if self.adapter is not None :
+            x = self.adapter(x) # the adapter is called here with x as an input.
+        x = self.neck(x.permute(0, 3, 1, 2)) # the neck is called after the adapter.
+
         return x
 
 
@@ -215,7 +228,7 @@ class Block(nn.Module):
         self.channel_adapter = Adapter(dim, skip_connect=False)  # MLP-adapter, no skip connection
         self.scale = 0.5
 
-    def forward(self, x: torch.Tensor, embedding_feature) -> torch.Tensor:#
+    def forward(self, x: torch.Tensor) -> torch.Tensor:#, embedding_feature
         shortcut = x
         x = self.norm1(x)
         # Window partition
@@ -231,7 +244,7 @@ class Block(nn.Module):
         ########
         x = shortcut + x
         xn = self.norm2(x)
-        x = x + self.mlp(xn) + self.scale * self.channel_adapter(xn, embedding_feature)#
+        x = x + self.mlp(xn) #+ self.scale * self.channel_adapter(xn, embedding_feature)#
 
         return x
 
