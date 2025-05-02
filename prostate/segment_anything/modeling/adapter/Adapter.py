@@ -18,8 +18,8 @@ class Adapter(nn.Module):
         self.D_fc1 = nn.Linear(D_features, D_hidden_features)
         self.D_fc2 = nn.Linear(D_hidden_features, D_features)
 
-    def forward(self, x, embedding_feature):#
-        x = x + embedding_feature.permute(0, 2, 3, 1)
+    def forward(self, x):
+        x = x
         x = self.channel_filter(x)
 
         # x is (BT, HW+1, D)
