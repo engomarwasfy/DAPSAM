@@ -155,12 +155,10 @@ class ImageEncoderViT(nn.Module):
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
             
-            if self.adapter :
+            if self.adapter:
                 x = self.adapter(x)
-            prompt = self.l_adapter(i, x, embedding_feature)#
-            x = prompt.reshape(B, H, W, -1) + x
-            x = blk(x, embedding_feature)#
-
+            x = blk(x)
+        
         x = self.neck(x.permute(0, 3, 1, 2))
         return x
 
@@ -216,7 +214,7 @@ class Block(nn.Module):
         self.channel_adapter = Adapter(dim, skip_connect=False)  # MLP-adapter, no skip connection
         self.scale = 0.5
 
-    def forward(self, x: torch.Tensor, embedding_feature) -> torch.Tensor:#
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x
         x = self.norm1(x)
         # Window partition
@@ -232,7 +230,7 @@ class Block(nn.Module):
         ########
         x = shortcut + x
         xn = self.norm2(x)
-        x = x + self.mlp(xn) + self.scale * self.channel_adapter(xn, embedding_feature)#
+        x = x + self.mlp(xn) #+ self.scale * self.channel_adapter(xn, embedding_feature)#
 
         return x
 

@@ -161,12 +161,9 @@ class ImageEncoderViT(nn.Module):
         if self.pos_embed is not None:
             x = x + self.pos_embed
         
-        #embedding_feature = self.l_adapter.init_embeddings(x)
-        
+
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
-            #prompt = self.l_adapter(i, x, embedding_feature)#
-            #x = prompt.reshape(B, H, W, -1) + x
             x = blk(x)#
 
 
@@ -244,7 +241,7 @@ class Block(nn.Module):
         ########
         x = shortcut + x
         xn = self.norm2(x)
-        x = x + self.mlp(xn) #+ self.scale * self.channel_adapter(xn, embedding_feature)#
+        x = x + self.mlp(xn) + self.scale * self.channel_adapter(xn)
 
         return x
 
