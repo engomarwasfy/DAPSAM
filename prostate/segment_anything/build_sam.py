@@ -1,4 +1,4 @@
-from .adapter.SelfAttentionAdapter import SelfAttentionAdapter
+from .modeling.adapter.SelfAttentionAdapter import SelfAttentionAdapter
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
