@@ -11,8 +11,7 @@ import torch.nn.functional as F
 from typing import Optional, Tuple, Type
 
 from segment_anything.modeling.adapter.Adapter import Adapter
-from segment_anything.modeling.adapter.LAdapter import LAdapter
-
+from segment_anything.modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 class MLPBlock(nn.Module):
     def __init__(
         self,

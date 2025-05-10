@@ -13,6 +13,7 @@ from typing import Optional, Tuple, Type
 from segment_anything.modeling.adapter.Adapter import Adapter
 from segment_anything.modeling.adapter.LAdapter import LAdapter
 
+from segment_anything.modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
 class MLPBlock(nn.Module):
     def __init__(
@@ -101,8 +102,10 @@ class ImageEncoderViT(nn.Module):
         self.pos_embed: Optional[nn.Parameter] = None
         if use_abs_pos:
             # Initialize absolute positional embedding with pretrain image size.
+
+
             self.pos_embed = nn.Parameter(
-                torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim)
+                torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim), requires_grad=True
             )
 
         self.adapter = None
@@ -125,9 +128,11 @@ class ImageEncoderViT(nn.Module):
             )
             self.blocks.append(block)
         self.out_indices = out_indices
+
         self.neck = nn.Sequential(
             nn.Conv2d(
                 embed_dim,
+
                 out_chans,
                 kernel_size=1,
                 bias=False,
@@ -145,9 +150,12 @@ class ImageEncoderViT(nn.Module):
 
         self.scale_factor = 4
         self.embed_dim = embed_dim
+
         self.l_adapter = LAdapter(self.scale_factor,
                                                 self.embed_dim,
                                                 depth)
+
+        # the adapter is initialized here.
         self.scale = 0.5 
 
 

@@ -12,7 +12,7 @@ from functools import partial
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
 
-from .modeling.adapter.SelfAttentionAdapter import SelfAttentionAdapter
+from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
@@ -22,7 +22,7 @@ def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
-        adapter=SelfAttentionAdapter,
+        adapter=MultiHeadGatedCrossAttentionAdapter,
         checkpoint=checkpoint,
         num_classes=num_classes,
         image_size=image_size,

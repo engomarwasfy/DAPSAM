@@ -1,4 +1,4 @@
-from .modeling.adapter.SelfAttentionAdapter import SelfAttentionAdapter
+from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
@@ -17,7 +17,7 @@ from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTr
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
                     checkpoint=None):
     return _build_sam(
-        adapter=SelfAttentionAdapter,
+        adapter=MultiHeadGatedCrossAttentionAdapter,
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
