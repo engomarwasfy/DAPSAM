@@ -10,8 +10,7 @@ from torch.nn import functional as F
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
-from .modeling.memory.memory_prompt import PrototypePromptGenerate
-
+from .modeling.memory.memory_prompt import PrototypePromptGenerate # Import PrototypePromptGenerate directly
 
 from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
@@ -145,6 +144,8 @@ def _build_sam(
         # 2. Pass image embeddings to PrototypePromptGenerate to get the dense prompt
         # Assuming PrototypePromptGenerate takes image embeddings as input
         sparse_embeddings, dense_prompt = sam.prompt_encoder(image_embeddings)
+        # Ensure dense_prompt has a batch dimension if PrototypePromptGenerate returns without one
+        dense_prompt = dense_prompt.unsqueeze(0) if dense_prompt.ndim == 3 else dense_prompt # B x C x H x W
 
         # 3. Pass image embeddings, sparse prompts (if any), and dense prompt to mask_decoder
         # Note: This assumes the MaskDecoder's forward method can handle these inputs correctly.

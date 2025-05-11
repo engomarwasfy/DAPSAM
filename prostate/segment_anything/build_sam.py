@@ -11,7 +11,8 @@ from torch.nn import functional as F
 
 from functools import partial
 
-from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, PrototypePromptGenerate
+from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
+from .modeling.memory.memory_prompt import PrototypePromptGenerate
 
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
