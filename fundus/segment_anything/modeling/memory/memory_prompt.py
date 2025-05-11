@@ -142,7 +142,7 @@ class PrototypePromptGenerate(nn.Module):
 
         # Expand multiple prototypes to feature spatial dimensions
         # (batch_size, num_prototypes, embed_dim) -> (batch_size, num_prototypes * embed_dim, H, W)
-        info_protos = di_proto.permute(0, 2, 1).contiguous().view(N, self.num_prototypes * C, 1, 1).expand(-1, -1, H, W)
+        info_protos = di_proto.permute(0, 2, 1).contiguous().reshape(N, self.num_prototypes * C, 1, 1).expand(-1, -1, H, W)
 
         # Calculate cosine similarity with the first prototype for simplicity for now
         # We can explore more sophisticated similarity measures later

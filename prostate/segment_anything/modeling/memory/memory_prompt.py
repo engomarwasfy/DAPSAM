@@ -146,7 +146,7 @@ class PrototypePromptGenerate(nn.Module):
         cos_sim_maps = F.cosine_similarity(info_protos, feature.unsqueeze(1), dim=2, eps=1e-7) # B x num_prototypes x H x W
 
         # Concatenate features, expanded prototypes, and cosine similarity maps
-        concatenated_features = torch.cat([feature, info_protos.view(N, -1, H, W), cos_sim_maps], dim=1)
+        concatenated_features = torch.cat([feature, info_protos.reshape(N, -1, H, W), cos_sim_maps], dim=1)
 
         prompt = self.fuse_conv(concatenated_features)
 
