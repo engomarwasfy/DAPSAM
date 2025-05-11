@@ -165,10 +165,7 @@ def _build_sam(
             # 3. Pass image embeddings, sparse prompts (if any), and dense prompt to mask_decoder
             masks, iou_predictions = self.sam.mask_decoder(
                 image_embeddings, sparse_embeddings, dense_prompt, point_coords, point_labels, boxes, masks
-            )
-            return masks, iou_predictions
-    # sam.eval()
-    sam.train()
+ )
 
     # Create a wrapper function to handle the data flow
     def sam_wrapper(image, point_coords=None, point_labels=None, boxes=None, masks=None):

@@ -111,8 +111,13 @@ def _build_sam(
             # Let's assume the mask_decoder expects (image_embeddings, sparse_prompt_embeddings, dense_prompt_embeddings, multmask_output)
             # Note: The original SAM MaskDecoder forward signature includes point_coords, point_labels, and mask_input.
             # We need to align with that or ensure the mask_decoder can handle None for sparse prompts if only dense is used.
-            masks, iou_preds, low_res_masks = self.sam.mask_decoder(
-                image_embeddings, sparse_embeddings_generated, dense_embeddings_generated, point_coords, point_labels, mask_input, multimask_output)
+            masks, iou_preds, low_res_masks = self.sam.mask_decoder( # Pass positional encoding to mask decoder? The original PromptEncoder handled this.
+                image_embeddings=image_embeddings,
+                image_pe=self.sam.prompt_encoder.get_dense_pe(), # This line is likely problematic # Original PromptEncoder commented out
+                sparse_prompt_embeddings=sparse_embeddings_generated,
+                dense_prompt_embeddings=dense_embeddings_generated,
+                multimask_output=multimask_output,
+            )
             return masks, iou_preds, low_res_masks # Return the standard outputs
     prompt_embed_dim = 256
     image_size = image_size
@@ -169,13 +174,13 @@ def _build_sam(
 
     # Create a wrapper function to handle the forward pass
     def wrapped_sam_forward(image, point_coords, point_labels, mask_input=None, multimask_output=False):
-        image_embeddings = sam.image_encoder(image)
+        image_embeddings = sam.image_encoder(image) # The image encoder outputs the image embeddings
         # Generate dense prompt from image embeddings using PrototypePromptGenerate
         sparse_embeddings, dense_embeddings = prototype_prompt_generator(image_embeddings)
-        masks, iou_preds, low_res_masks = sam.mask_decoder(image_embeddings, sparse_embeddings, dense_embeddings, point_coords, point_labels, mask_input, multimask_output)
+        masks, iou_preds, low_res_masks = sam.mask_decoder(image_embeddings=image_embeddings, sparse_prompt_embeddings=sparse_embeddings, dense_prompt_embeddings=dense_embeddings, point_coords=point_coords, point_labels=point_labels, mask_input=mask_input, multimask_output=multimask_output) # Pass all required arguments to mask decoder
         return masks, iou_preds, low_res_masks
 
-    if checkpoint is not None: # This part handles loading checkpoints into the original SAM model structure
+    if checkpoint is not None: # This part handles loading checkpoints into the original SAM model structure. Keep frozen except adapter
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
         try:
@@ -186,7 +191,7 @@ def _build_sam(
 
         for name, value in sam.image_encoder.named_parameters():
             # freeze backbone except adapter
-            if "adapter" not in name:#Adapter
+            if "adapter" not in name: # Adapter
                  value.requires_grad = False # Keep frozen except adapter
 
     # Return the wrapper class instance instead of the function
