@@ -119,7 +119,7 @@ class PrototypePromptGenerate(nn.Module):
         self.pe_layer = PositionEmbeddingRandom(embed_dim // 2)
         self.image_embedding_size = (image_embedding_size, image_embedding_size)
 
-        self.fuse_conv = nn.Conv2d(512 + num_prototypes * embed_dim, 256, 1) # Adjust input channels for multiple prototypes and cosine similarities
+        self.fuse_conv = nn.Conv2d(256 + num_prototypes * embed_dim + num_prototypes, 256, 1) # Adjust input channels for multiple prototypes and cosine similarities
     def get_dense_pe(self) -> torch.Tensor:
         """
         Returns the positional encoding used to encode point prompts,
