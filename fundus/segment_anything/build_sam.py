@@ -143,18 +143,25 @@ def _build_sam(
             self.sam = sam_model
             self.prototype_prompt_generator = prototype_prompt_generator
 
-        def forward(self, image, point_coords=None, point_labels=None, boxes=None, masks=None):
+        def forward(self, image, multimask_output, args_img_size, point_coords=None, point_labels=None, boxes=None, masks=None):
             # 1. Pass the image through image_encoder to get image embeddings
             image_embeddings = self.sam.image_encoder(image)
 
             # 2. Pass image embeddings to PrototypePromptGenerate to get the dense prompt
-            # Assuming PrototypePromptGenerate takes image embeddings as input
-            # Note: PrototypePromptGenerate in memory_prompt.py takes the pooled feature, not raw embeddings
-            # We need to adjust this call or the PrototypePromptGenerate
-            # For now, let's pass the image embeddings directly, assuming PrototypePromptGenerate handles the pooling internally
-            # Or, we can do the pooling here before passing to prototype_prompt_generator
+            # We pass the image embeddings to the prototype prompt generator
+            # The prototype_prompt_generator is now set as self.sam.prompt_encoder during Sam instantiation
+            sparse_embeddings_generated, dense_embeddings_generated = self.sam.prompt_encoder(image_embeddings)
 
-            # Doing the pooling here to align with PrototypePromptGenerate's expected input
+            # Generate positional encoding for the image embeddings
+            B, C, H, W = image_embeddings.shape
+            # Create coordinate grids for H and W
+            grid_y, grid_x = torch.meshgrid(torch.arange(H), torch.arange(W))
+            # Normalize coordinates
+            grid_x = (grid_x / (W - 1)) * 2 - 1
+            grid_y = (grid_y / (H - 1)) * 2 - 1
+            # Combine coordinates and repeat to match channel dimension
+            pos_encoding = torch.stack([grid_x, grid_y], dim=0).unsqueeze(0).repeat(1, C // 2, 1, 1).to(image_embeddings.device)
+            # Handle odd channel dimension by padding with zeros or similar
             N, C, H, W = image_embeddings.shape
             feature_proto_avg = F.avg_pool2d(input=image_embeddings, kernel_size=image_embeddings.shape[-2:])
             feature_proto_max = F.max_pool2d(input=image_embeddings, kernel_size=image_embeddings.shape[-2:])
@@ -162,36 +169,17 @@ def _build_sam(
 
             sparse_embeddings, dense_prompt = self.prototype_prompt_generator(feature_proto)
 
-            # 3. Pass image embeddings, sparse prompts (if any), and dense prompt to mask_decoder
-            masks, iou_predictions = self.sam.mask_decoder(
-                image_embeddings, sparse_embeddings, dense_prompt, point_coords, point_labels, boxes, masks
- )
+            # 3. Pass image embeddings, positional encoding, sparse prompts, and dense prompt to mask_decoder
+            masks, iou_preds, low_res_masks = self.sam.mask_decoder(
+                image_embeddings=image_embeddings,
+                image_pe=pos_encoding, # Pass the generated positional encoding
+                sparse_prompt_embeddings=sparse_embeddings_generated,
+                dense_prompt_embeddings=dense_embeddings_generated,
+                multimask_output=multimask_output,
+            )
 
-    # Create a wrapper function to handle the data flow
-    def sam_wrapper(image, point_coords=None, point_labels=None, boxes=None, masks=None):
-        # 1. Pass the image through image_encoder to get image embeddings
-        image_embeddings = sam.image_encoder(image)
+            return masks, iou_preds, low_res_masks
 
-        # 2. Pass image embeddings to PrototypePromptGenerate to get the dense prompt
-        # Assuming PrototypePromptGenerate takes image embeddings as input
-        sparse_embeddings, dense_prompt = sam.prompt_encoder(image_embeddings)
-        # Ensure dense_prompt has a batch dimension if PrototypePromptGenerate returns without one
-        dense_prompt = dense_prompt.unsqueeze(0) if dense_prompt.ndim == 3 else dense_prompt # B x C x H x W
-
-        # 3. Pass image embeddings, sparse prompts (if any), and dense prompt to mask_decoder
-        # Note: This assumes the MaskDecoder's forward method can handle these inputs correctly.
-        # You might need to ensure the MaskDecoder is compatible with this input structure.
-        masks, iou_predictions = sam.mask_decoder.forward(
-            image_embeddings,
-            sparse_embeddings, # Use the sparse embeddings from PrototypePromptGenerate (which are empty in this case)
-            dense_prompt,
-            point_coords=point_coords,
-            point_labels=point_labels,
-            boxes=boxes,
-            masks=masks # Pass the mask prompt if available
-        )
-        return masks, iou_predictions
-    if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
         try:
@@ -203,16 +191,12 @@ def _build_sam(
         for name, value in sam.image_encoder.named_parameters(): 
             if "adapter" not in name:  # Adapter
                 value.requires_grad = False
+
         if adapter is not None:
             sam.image_encoder.adapter = adapter(input_dim=encoder_embed_dim)
-            
-            
 
     return SamWithEnhancedPrompts(sam, sam.prompt_encoder), image_embedding_size # Return instance of the wrapper class
 
-
-
-    return sam, image_embedding_size
 
 
 def load_from(sam, state_dict, image_size, vit_patch_size):

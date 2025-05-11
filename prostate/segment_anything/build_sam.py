@@ -13,7 +13,6 @@ from torch.nn import functional as F
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
-from .modeling.memory.memory_prompt import PrototypePromptGenerate, EnhancedMemoryUnit # Ensure EnhancedMemoryUnit is also imported if needed elsewhere, but it's used within PrototypePromptGenerate
 
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
@@ -86,6 +85,7 @@ def _build_sam(
         adapter=None,
         checkpoint=None,
 ):
+    from .modeling.memory.memory_prompt import PrototypePromptGenerate
     # Define the wrapper class inside the build function
     class SamWithEnhancedPrompts(nn.Module):
         def __init__(self, sam_model, prototype_prompt_generator):
@@ -111,9 +111,14 @@ def _build_sam(
             # Let's assume the mask_decoder expects (image_embeddings, sparse_prompt_embeddings, dense_prompt_embeddings, multmask_output)
             # Note: The original SAM MaskDecoder forward signature includes point_coords, point_labels, and mask_input.
             # We need to align with that or ensure the mask_decoder can handle None for sparse prompts if only dense is used.
-            masks, iou_preds, low_res_masks = self.sam.mask_decoder( # Pass positional encoding to mask decoder? The original PromptEncoder handled this.
+            # Generate positional encoding based on image embedding shape
+            B, C, H, W = image_embeddings.shape
+            # Simple positional encoding: create coordinate grids
+            grid_y, grid_x = torch.meshgrid(torch.arange(H, device=image_embeddings.device), torch.arange(W, device=image_embeddings.device), indexing='ij')
+            pos_encoding = torch.stack([grid_x.float() / (W - 1), grid_y.float() / (H - 1)], dim=0).unsqueeze(0) # Shape (1, 2, H, W)
+            # This is a very basic PE, SAM's PE is more complex. You might need a more sophisticated PE generation if this doesn't work well.
                 image_embeddings=image_embeddings,
-                image_pe=self.sam.prompt_encoder.get_dense_pe(), # This line is likely problematic # Original PromptEncoder commented out
+                image_pe=pos_encoding.repeat(1, C // 2, 1, 1) if C > 1 else pos_encoding, # Repeat if C > 2, otherwise use as is (assuming C >= 2 for simple PE)
                 sparse_prompt_embeddings=sparse_embeddings_generated,
                 dense_prompt_embeddings=dense_embeddings_generated,
                 multimask_output=multimask_output,
@@ -170,14 +175,14 @@ def _build_sam(
     prototype_prompt_generator = PrototypePromptGenerate(mem_dim=256, embed_dim=prompt_embed_dim, image_embedding_size=image_embedding_size)
 
     # Wrap the SAM model with the enhanced prompt generation
-    sam.train()
+    #sam.train() # Keep original SAM instance in train mode
 
-    # Create a wrapper function to handle the forward pass
-    def wrapped_sam_forward(image, point_coords, point_labels, mask_input=None, multimask_output=False):
-        image_embeddings = sam.image_encoder(image) # The image encoder outputs the image embeddings
-        # Generate dense prompt from image embeddings using PrototypePromptGenerate
-        sparse_embeddings, dense_embeddings = prototype_prompt_generator(image_embeddings)
-        masks, iou_preds, low_res_masks = sam.mask_decoder(image_embeddings=image_embeddings, sparse_prompt_embeddings=sparse_embeddings, dense_prompt_embeddings=dense_embeddings, point_coords=point_coords, point_labels=point_labels, mask_input=mask_input, multimask_output=multimask_output) # Pass all required arguments to mask decoder
+    # Return the wrapper class instance
+    model = SamWithEnhancedPrompts(sam, prototype_prompt_generator)
+
+    # After instantiating the wrapper, put the whole model in training mode
+    model.train()
+
         return masks, iou_preds, low_res_masks
 
     if checkpoint is not None: # This part handles loading checkpoints into the original SAM model structure. Keep frozen except adapter
@@ -191,8 +196,8 @@ def _build_sam(
 
         for name, value in sam.image_encoder.named_parameters():
             # freeze backbone except adapter
-            if "adapter" not in name: # Adapter
-                 value.requires_grad = False # Keep frozen except adapter
+            if "adapter" not in name: # Adapter # Ensure adapter requires grad, others don't
+                 value.requires_grad = False
 
     # Return the wrapper class instance instead of the function
     return SamWithEnhancedPrompts(sam, prototype_prompt_generator), image_embedding_size
