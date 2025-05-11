@@ -1,4 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+import torch.nn as nn
+
 # All rights reserved.
 
 # This source code is licensed under the license found in the
@@ -12,8 +14,6 @@ from functools import partial
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 from .modeling.memory.memory_prompt import PrototypePromptGenerate # Import PrototypePromptGenerate directly
 
-from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
-
 import torch.nn as nn
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
@@ -23,7 +23,6 @@ def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
-        adapter=MultiHeadGatedCrossAttentionAdapter,
         checkpoint=checkpoint,
         num_classes=num_classes,
         image_size=image_size,
@@ -72,6 +71,8 @@ sam_model_registry = {
     "vit_l": build_sam_vit_l,
     "vit_b": build_sam_vit_b,
 }
+
+from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
 
 def _build_sam(

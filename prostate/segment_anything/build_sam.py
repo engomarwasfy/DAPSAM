@@ -1,6 +1,7 @@
 from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+import torch.nn as nn
 # All rights reserved.
 
 # This source code is licensed under the license found in the
