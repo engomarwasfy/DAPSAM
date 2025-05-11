@@ -14,6 +14,7 @@ from .modeling.memory.memory_prompt import PrototypePromptGenerate # Import Prot
 
 from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
+import torch.nn as nn
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
                     checkpoint=None,):
@@ -133,6 +134,38 @@ def _build_sam(
         pixel_mean=pixel_mean,
         pixel_std=pixel_std
     )
+
+    # Define a new PyTorch nn.Module class inside _build_sam
+    class SamWithEnhancedPrompts(nn.Module):
+        def __init__(self, sam_model, prototype_prompt_generator):
+            super().__init__()
+            self.sam = sam_model
+            self.prototype_prompt_generator = prototype_prompt_generator
+
+        def forward(self, image, point_coords=None, point_labels=None, boxes=None, masks=None):
+            # 1. Pass the image through image_encoder to get image embeddings
+            image_embeddings = self.sam.image_encoder(image)
+
+            # 2. Pass image embeddings to PrototypePromptGenerate to get the dense prompt
+            # Assuming PrototypePromptGenerate takes image embeddings as input
+            # Note: PrototypePromptGenerate in memory_prompt.py takes the pooled feature, not raw embeddings
+            # We need to adjust this call or the PrototypePromptGenerate
+            # For now, let's pass the image embeddings directly, assuming PrototypePromptGenerate handles the pooling internally
+            # Or, we can do the pooling here before passing to prototype_prompt_generator
+
+            # Doing the pooling here to align with PrototypePromptGenerate's expected input
+            N, C, H, W = image_embeddings.shape
+            feature_proto_avg = F.avg_pool2d(input=image_embeddings, kernel_size=image_embeddings.shape[-2:])
+            feature_proto_max = F.max_pool2d(input=image_embeddings, kernel_size=image_embeddings.shape[-2:])
+            feature_proto = (feature_proto_avg + feature_proto_max).squeeze() # Shape (B, C)
+
+            sparse_embeddings, dense_prompt = self.prototype_prompt_generator(feature_proto)
+
+            # 3. Pass image embeddings, sparse prompts (if any), and dense prompt to mask_decoder
+            masks, iou_predictions = self.sam.mask_decoder(
+                image_embeddings, sparse_embeddings, dense_prompt, point_coords, point_labels, boxes, masks
+            )
+            return masks, iou_predictions
     # sam.eval()
     sam.train()
 
@@ -177,7 +210,7 @@ def _build_sam(
             
             
 
-    return sam, image_embedding_size
+    return SamWithEnhancedPrompts(sam, sam.prompt_encoder), image_embedding_size # Return instance of the wrapper class
 
 
 

@@ -12,7 +12,7 @@ from torch.nn import functional as F
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
-from .modeling.memory.memory_prompt import PrototypePromptGenerate
+from .modeling.memory.memory_prompt import PrototypePromptGenerate, EnhancedMemoryUnit # Ensure EnhancedMemoryUnit is also imported if needed elsewhere, but it's used within PrototypePromptGenerate
 
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
@@ -85,6 +85,34 @@ def _build_sam(
         adapter=None,
         checkpoint=None,
 ):
+    # Define the wrapper class inside the build function
+    class SamWithEnhancedPrompts(nn.Module):
+        def __init__(self, sam_model, prototype_prompt_generator):
+            super().__init__()
+            self.sam = sam_model
+            self.prototype_prompt_generator = prototype_prompt_generator
+
+        def forward(self, image, point_coords=None, point_labels=None, mask_input=None, multimask_output=False):
+            # Pass the image through the image encoder
+            image_embeddings = self.sam.image_encoder(image)
+
+            # Generate dense prompt from image embeddings using PrototypePromptGenerate
+            # PrototypePromptGenerate returns sparse_embeddings and dense_embeddings
+            sparse_embeddings_generated, dense_embeddings_generated = self.prototype_prompt_generator(image_embeddings)
+
+            # Combine generated sparse embeddings with input sparse prompts (if any)
+            # For simplicity, we'll primarily use the generated dense prompt and input sparse prompts
+            # If point_coords and point_labels are provided, they will create sparse prompts via the original PromptEncoder logic
+            # Since original PromptEncoder is commented out, we pass input sparse prompts directly if available,
+            # and the generated sparse_embeddings_generated (which is currently empty)
+            # If your task relies on input point/box prompts, you'll need to handle their encoding here.
+            # Assuming for now that input sparse prompts are handled elsewhere or not used with this enhanced setup.
+            # Let's assume the mask_decoder expects (image_embeddings, sparse_prompt_embeddings, dense_prompt_embeddings, multmask_output)
+            # Note: The original SAM MaskDecoder forward signature includes point_coords, point_labels, and mask_input.
+            # We need to align with that or ensure the mask_decoder can handle None for sparse prompts if only dense is used.
+            masks, iou_preds, low_res_masks = self.sam.mask_decoder(
+                image_embeddings, sparse_embeddings_generated, dense_embeddings_generated, point_coords, point_labels, mask_input, multimask_output)
+            return masks, iou_preds, low_res_masks # Return the standard outputs
     prompt_embed_dim = 256
     image_size = image_size
     vit_patch_size = 16
@@ -131,15 +159,11 @@ def _build_sam(
         pixel_mean=pixel_mean,
         pixel_std=pixel_std
     )
-    
-    # Instantiate the PrototypePromptGenerate module
-    prototype_prompt_generator = PrototypePromptGenerate(
-        mem_dim=256, 
-        embed_dim=prompt_embed_dim, 
-        image_embedding_size=image_embedding_size
-    )
 
-    # sam.eval()
+    # Instantiate the PrototypePromptGenerate module
+    prototype_prompt_generator = PrototypePromptGenerate(mem_dim=256, embed_dim=prompt_embed_dim, image_embedding_size=image_embedding_size)
+
+    # Wrap the SAM model with the enhanced prompt generation
     sam.train()
 
     # Create a wrapper function to handle the forward pass
@@ -148,9 +172,9 @@ def _build_sam(
         # Generate dense prompt from image embeddings using PrototypePromptGenerate
         sparse_embeddings, dense_embeddings = prototype_prompt_generator(image_embeddings)
         masks, iou_preds, low_res_masks = sam.mask_decoder(image_embeddings, sparse_embeddings, dense_embeddings, point_coords, point_labels, mask_input, multimask_output)
-        return masks, iou_preds, low_res_masks, low_res_masks # Assuming you want to return low_res_masks twice as in typical SAM output
+        return masks, iou_preds, low_res_masks
 
-    if checkpoint is not None:
+    if checkpoint is not None: # This part handles loading checkpoints into the original SAM model structure
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
         try:
@@ -162,9 +186,10 @@ def _build_sam(
         for name, value in sam.image_encoder.named_parameters():
             # freeze backbone except adapter
             if "adapter" not in name:#Adapter
-                value.requires_grad = False
+                 value.requires_grad = False # Keep frozen except adapter
 
-    return wrapped_sam_forward, image_embedding_size # Return the wrapper function and image_embedding_size
+    # Return the wrapper class instance instead of the function
+    return SamWithEnhancedPrompts(sam, prototype_prompt_generator), image_embedding_size
 
 
 def load_from(sam, state_dict, image_size, vit_patch_size):
