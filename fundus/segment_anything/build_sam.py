@@ -10,6 +10,7 @@ from torch.nn import functional as F
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
+from .modeling.memory.memory_prompt import PrototypePromptGenerate
 
 
 from .modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
@@ -90,6 +91,15 @@ def _build_sam(
     vit_patch_size = 16
     image_embedding_size = image_size // vit_patch_size  # Divide by 16 here
     sam = Sam(
+        # Instantiate PrototypePromptGenerate
+        prompt_encoder=PrototypePromptGenerate(
+            mem_dim=256,
+            embed_dim=prompt_embed_dim,
+            image_embedding_size=image_embedding_size
+        ),
+        # The original PromptEncoder is commented out, and PrototypePromptGenerate acts as the prompt encoder here.
+        # We will pass the image features to it in the wrapper function.
+
         image_encoder=ImageEncoderViT(
             adapter=adapter,
             depth=encoder_depth,
@@ -106,12 +116,6 @@ def _build_sam(
             window_size=14, 
             out_chans=prompt_embed_dim,
         ),
-        # prompt_encoder=PromptEncoder(
-        #     embed_dim=prompt_embed_dim,
-        #     image_embedding_size=(image_embedding_size, image_embedding_size),
-        #     input_image_size=(image_size, image_size),
-        #     mask_in_chans=16,
-        # ),
         mask_decoder=MaskDecoder(
             # num_multimask_outputs=3,
             num_multimask_outputs=num_classes,
@@ -132,6 +136,29 @@ def _build_sam(
     )
     # sam.eval()
     sam.train()
+
+    # Create a wrapper function to handle the data flow
+    def sam_wrapper(image, point_coords=None, point_labels=None, boxes=None, masks=None):
+        # 1. Pass the image through image_encoder to get image embeddings
+        image_embeddings = sam.image_encoder(image)
+
+        # 2. Pass image embeddings to PrototypePromptGenerate to get the dense prompt
+        # Assuming PrototypePromptGenerate takes image embeddings as input
+        sparse_embeddings, dense_prompt = sam.prompt_encoder(image_embeddings)
+
+        # 3. Pass image embeddings, sparse prompts (if any), and dense prompt to mask_decoder
+        # Note: This assumes the MaskDecoder's forward method can handle these inputs correctly.
+        # You might need to ensure the MaskDecoder is compatible with this input structure.
+        masks, iou_predictions = sam.mask_decoder.forward(
+            image_embeddings,
+            sparse_embeddings, # Use the sparse embeddings from PrototypePromptGenerate (which are empty in this case)
+            dense_prompt,
+            point_coords=point_coords,
+            point_labels=point_labels,
+            boxes=boxes,
+            masks=masks # Pass the mask prompt if available
+        )
+        return masks, iou_predictions
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)

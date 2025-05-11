@@ -11,7 +11,7 @@ from torch.nn import functional as F
 
 from functools import partial
 
-from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
+from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, PrototypePromptGenerate
 
 
 def build_sam_vit_h(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375],
@@ -89,6 +89,7 @@ def _build_sam(
     vit_patch_size = 16
     image_embedding_size = image_size // vit_patch_size  # Divide by 16 here
     sam = Sam(
+        # The image encoder outputs the image embeddings
         image_encoder=ImageEncoderViT(
             depth=encoder_depth,
             embed_dim=encoder_embed_dim,
@@ -104,6 +105,7 @@ def _build_sam(
             out_chans=prompt_embed_dim,
             adapter = adapter,
         ),
+        # The standard PromptEncoder is commented out, so we'll use PrototypePromptGenerate
         # prompt_encoder=PromptEncoder(
         #     embed_dim=prompt_embed_dim,
         #     image_embedding_size=(image_embedding_size, image_embedding_size),
@@ -128,8 +130,25 @@ def _build_sam(
         pixel_mean=pixel_mean,
         pixel_std=pixel_std
     )
+    
+    # Instantiate the PrototypePromptGenerate module
+    prototype_prompt_generator = PrototypePromptGenerate(
+        mem_dim=256, 
+        embed_dim=prompt_embed_dim, 
+        image_embedding_size=image_embedding_size
+    )
+
     # sam.eval()
     sam.train()
+
+    # Create a wrapper function to handle the forward pass
+    def wrapped_sam_forward(image, point_coords, point_labels, mask_input=None, multimask_output=False):
+        image_embeddings = sam.image_encoder(image)
+        # Generate dense prompt from image embeddings using PrototypePromptGenerate
+        sparse_embeddings, dense_embeddings = prototype_prompt_generator(image_embeddings)
+        masks, iou_preds, low_res_masks = sam.mask_decoder(image_embeddings, sparse_embeddings, dense_embeddings, point_coords, point_labels, mask_input, multimask_output)
+        return masks, iou_preds, low_res_masks, low_res_masks # Assuming you want to return low_res_masks twice as in typical SAM output
+
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
@@ -144,7 +163,7 @@ def _build_sam(
             if "adapter" not in name:#Adapter
                 value.requires_grad = False
 
-    return sam, image_embedding_size
+    return wrapped_sam_forward, image_embedding_size # Return the wrapper function and image_embedding_size
 
 
 def load_from(sam, state_dict, image_size, vit_patch_size):

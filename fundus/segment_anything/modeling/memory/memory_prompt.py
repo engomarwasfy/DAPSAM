@@ -79,14 +79,49 @@ class MemoryUnit(nn.Module):
         return output # output
 
 
+class EnhancedMemoryUnit(nn.Module):
+    def __init__(self, num_prototypes=4, mem_dim=256, fea_dim=256):
+        super(EnhancedMemoryUnit, self).__init__()
+        self.num_prototypes = num_prototypes
+        self.mem_dim = mem_dim
+        self.fea_dim = fea_dim
+        # Change weight to support multiple prototypes
+        self.weight = nn.Parameter(torch.Tensor(self.num_prototypes, self.mem_dim, self.fea_dim)) # P x M x C
+        self.bias = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(2))
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
+
+    def forward(self, input):
+        # input shape: (batch_size, fea_dim) or (fea_dim)
+        if len(input.shape) == 1:
+            input = torch.unsqueeze(input, 0)
+        batch_size = input.shape[0]
+        
+        # Calculate attention for each prototype
+        # (batch_size, 1, fea_dim) x (num_prototypes, mem_dim, fea_dim) -> (batch_size, num_prototypes, mem_dim)
+        att_weight = torch.einsum('bc,pmc->bpm', input, self.weight)
+        att_weight = F.softmax(att_weight, dim=2) # Softmax over memory dimensions
+        
+        # Weighted sum of memory vectors for each prototype
+        # (batch_size, num_prototypes, mem_dim) x (num_prototypes, mem_dim, fea_dim) -> (batch_size, num_prototypes, fea_dim)
+        output = torch.einsum('bpm,pmc->bpc', att_weight, self.weight)
+        return output # output shape: (batch_size, num_prototypes, fea_dim)
+
+
 class PrototypePromptGenerate(nn.Module):
-    def __init__(self, mem_dim=256, embed_dim=256, image_embedding_size=32):
+    def __init__(self, num_prototypes=4, mem_dim=256, embed_dim=256, image_embedding_size=32):
         super(PrototypePromptGenerate, self).__init__()
-        self.memory_bank = MemoryUnit(mem_dim, embed_dim)
+        self.num_prototypes = num_prototypes
+        self.memory_bank = EnhancedMemoryUnit(num_prototypes, mem_dim, embed_dim)
         self.pe_layer = PositionEmbeddingRandom(embed_dim // 2)
         self.image_embedding_size = (image_embedding_size, image_embedding_size)
-
-        self.fuse_conv = nn.Conv2d(513, 256, 1)
+        # Adjust fuse_conv input channels: original feature (256) + multiple expanded prototypes (num_prototypes * embed_dim) + cosine similarity map (1)
+        self.fuse_conv = nn.Conv2d(embed_dim + num_prototypes * embed_dim + 1, embed_dim, 1)
     def get_dense_pe(self) -> torch.Tensor:
         """
         Returns the positional encoding used to encode point prompts,
@@ -104,15 +139,21 @@ class PrototypePromptGenerate(nn.Module):
         feature_proto_max = F.max_pool2d(input=feature, kernel_size=feature.shape[-2:])#b x c x 1 x 1
         feature_proto = (feature_proto_avg + feature_proto_max)
         feature_proto = feature_proto.squeeze()
-        di_proto = self.memory_bank(feature_proto)#b x c
+        # Receive multiple prototypes: (batch_size, num_prototypes, embed_dim)
+        di_proto = self.memory_bank(feature_proto)
 
-        di_proto = di_proto.unsqueeze(2).unsqueeze(2)
-        info_proto = di_proto.expand_as(feature)
+        # Expand multiple prototypes to feature spatial dimensions
+        # (batch_size, num_prototypes, embed_dim) -> (batch_size, num_prototypes * embed_dim, H, W)
+        info_protos = di_proto.permute(0, 2, 1).contiguous().view(N, self.num_prototypes * C, 1, 1).expand(-1, -1, H, W)
 
-        cos_sim_map = F.cosine_similarity(info_proto, feature, dim=1, eps=1e-7)  # b x h x w
+        # Calculate cosine similarity with the first prototype for simplicity for now
+        # We can explore more sophisticated similarity measures later
+        first_proto_expanded = di_proto[:, 0, :].unsqueeze(2).unsqueeze(2).expand_as(feature)
+
+        cos_sim_map = F.cosine_similarity(first_proto_expanded, feature, dim=1, eps=1e-7)  # b x h x w
         cos_sim_map = cos_sim_map.unsqueeze(1)# b x 1 x h x w
 
-        prompt = self.fuse_conv(torch.cat([feature, info_proto, cos_sim_map], dim=1))
+        prompt = self.fuse_conv(torch.cat([feature, info_protos, cos_sim_map], dim=1))
 
         sparse_embeddings = torch.empty((1, 0, C), device=device)
         return sparse_embeddings, prompt

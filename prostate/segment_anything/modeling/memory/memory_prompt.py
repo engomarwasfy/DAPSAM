@@ -79,14 +79,46 @@ class MemoryUnit(nn.Module):
         return output # output
 
 
+class EnhancedMemoryUnit(nn.Module):
+    def __init__(self, num_prototypes=8, mem_dim=256, fea_dim=256):
+        super(EnhancedMemoryUnit, self).__init__()
+        self.num_prototypes = num_prototypes
+        self.mem_dim = mem_dim
+        self.fea_dim = fea_dim
+        # Changed dimensions to support multiple prototypes
+        self.weight = nn.Parameter(torch.Tensor(self.num_prototypes, self.mem_dim, self.fea_dim))  # P x M x C
+        self.bias = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(2)) # Use fea_dim for initialization
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
+
+    def forward(self, input):
+        if len(input.shape) == 1:
+            input = torch.unsqueeze(input, 0)
+
+        batch_size = input.shape[0]
+        # Reshape input for batch processing with multiple prototypes
+        input_expanded = input.unsqueeze(1).expand(batch_size, self.num_prototypes, -1) # B x P x C
+        
+        # Calculate attention and output for each prototype
+        att_weight = torch.bmm(input_expanded, self.weight.permute(0, 2, 1)) # B x P x M
+        att_weight = F.softmax(att_weight, dim=2)  # B x P x M
+        output = torch.bmm(att_weight, self.weight) # B x P x C
+        return output
+
 class PrototypePromptGenerate(nn.Module):
     def __init__(self, mem_dim=256, embed_dim=256, image_embedding_size=24):
+        num_prototypes = 4  # Define the number of prototypes
         super(PrototypePromptGenerate, self).__init__()
-        self.memory_bank = MemoryUnit(mem_dim, embed_dim)
+        self.memory_bank = EnhancedMemoryUnit(num_prototypes=num_prototypes, mem_dim=mem_dim, fea_dim=embed_dim) # Use EnhancedMemoryUnit
         self.pe_layer = PositionEmbeddingRandom(embed_dim // 2)
         self.image_embedding_size = (image_embedding_size, image_embedding_size)
 
-        self.fuse_conv = nn.Conv2d(513, 256, 1)
+        self.fuse_conv = nn.Conv2d(512 + num_prototypes * embed_dim, 256, 1) # Adjust input channels for multiple prototypes and cosine similarities
     def get_dense_pe(self) -> torch.Tensor:
         """
         Returns the positional encoding used to encode point prompts,
@@ -104,15 +136,18 @@ class PrototypePromptGenerate(nn.Module):
         feature_proto_max = F.max_pool2d(input=feature, kernel_size=feature.shape[-2:])#b x c x 1 x 1
         feature_proto = (feature_proto_avg + feature_proto_max)
         feature_proto = feature_proto.squeeze()
-        di_proto = self.memory_bank(feature_proto)#b x c
+        di_proto = self.memory_bank(feature_proto)# B x num_prototypes x C
+        
+        # Expand multiple refined prototypes to the spatial dimensions
+        info_protos = di_proto.unsqueeze(3).unsqueeze(4).expand(-1, -1, -1, H, W) # B x num_prototypes x C x H x W
+        
+        # Calculate cosine similarity map for each prototype
+        cos_sim_maps = F.cosine_similarity(info_protos, feature.unsqueeze(1), dim=2, eps=1e-7) # B x num_prototypes x H x W
 
-        di_proto = di_proto.unsqueeze(2).unsqueeze(2)
-        info_proto = di_proto.expand_as(feature)
+        # Concatenate features, expanded prototypes, and cosine similarity maps
+        concatenated_features = torch.cat([feature, info_protos.view(N, -1, H, W), cos_sim_maps], dim=1)
 
-        cos_sim_map = F.cosine_similarity(info_proto, feature, dim=1, eps=1e-7)  # b x h x w
-        cos_sim_map = cos_sim_map.unsqueeze(1)# b x 1 x h x w
-
-        prompt = self.fuse_conv(torch.cat([feature, info_proto, cos_sim_map], dim=1))
+        prompt = self.fuse_conv(concatenated_features)
 
         sparse_embeddings = torch.empty((1, 0, C), device=device)
         return sparse_embeddings, prompt
