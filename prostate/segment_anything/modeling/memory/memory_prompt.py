@@ -99,15 +99,16 @@ class EnhancedMemoryUnit(nn.Module):
     def forward(self, input):
         if len(input.shape) == 1:
             input = torch.unsqueeze(input, 0)
-
         batch_size = input.shape[0]
-        # Reshape input for batch processing with multiple prototypes
-        input_expanded = input.unsqueeze(1).expand(batch_size, self.num_prototypes, -1) # B x P x C
-        
-        # Calculate attention and output for each prototype
-        att_weight = torch.bmm(input_expanded, self.weight.permute(0, 2, 1)) # B x P x M
+
+        # Calculate attention weights using einsum
+        # input shape: (batch_size, fea_dim)
+        # self.weight shape: (num_prototypes, mem_dim, fea_dim)
+        # att_weight shape: (batch_size, num_prototypes, mem_dim)
+        att_weight = torch.einsum('bc,pmc->bpm', input, self.weight)
         att_weight = F.softmax(att_weight, dim=2)  # B x P x M
-        output = torch.bmm(att_weight, self.weight) # B x P x C
+
+        output = torch.einsum('bpm,pmc->bpc', att_weight, self.weight) # B x P x C
         return output
 
 class PrototypePromptGenerate(nn.Module):

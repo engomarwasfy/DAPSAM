@@ -101,18 +101,16 @@ class EnhancedMemoryUnit(nn.Module):
         if len(input.shape) == 1:
             input = torch.unsqueeze(input, 0)
         batch_size = input.shape[0]
-        
+
         # Calculate attention for each prototype
         # (batch_size, 1, fea_dim) x (num_prototypes, mem_dim, fea_dim) -> (batch_size, num_prototypes, mem_dim)
         att_weight = torch.einsum('bc,pmc->bpm', input, self.weight)
         att_weight = F.softmax(att_weight, dim=2) # Softmax over memory dimensions
-        
+
         # Weighted sum of memory vectors for each prototype
         # (batch_size, num_prototypes, mem_dim) x (num_prototypes, mem_dim, fea_dim) -> (batch_size, num_prototypes, fea_dim)
         output = torch.einsum('bpm,pmc->bpc', att_weight, self.weight)
         return output # output shape: (batch_size, num_prototypes, fea_dim)
-
-
 class PrototypePromptGenerate(nn.Module):
     def __init__(self, num_prototypes=4, mem_dim=256, embed_dim=256, image_embedding_size=32):
         super(PrototypePromptGenerate, self).__init__()
