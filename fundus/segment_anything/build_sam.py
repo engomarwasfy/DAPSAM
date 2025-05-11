@@ -171,11 +171,11 @@ def _build_sam(
 
             # 3. Pass image embeddings, positional encoding, sparse prompts, and dense prompt to mask_decoder
             masks, iou_preds, low_res_masks = self.sam.mask_decoder(
-                image_embeddings=image_embeddings,
-                image_pe=pos_encoding, # Pass the generated positional encoding
-                sparse_prompt_embeddings=sparse_embeddings_generated,
-                dense_prompt_embeddings=dense_embeddings_generated,
-                multimask_output=multimask_output,
+ image_embeddings=image_embeddings,
+ image_pe=pos_encoding, # Pass the generated positional encoding
+ sparse_prompt_embeddings=sparse_embeddings_generated,
+ dense_prompt_embeddings=dense_embeddings_generated,
+ multimask_output=multimask_output,
             )
 
             return masks, iou_preds, low_res_masks

@@ -118,6 +118,7 @@ def _build_sam(
             pos_encoding = torch.stack([grid_x.float() / (W - 1), grid_y.float() / (H - 1)], dim=0).unsqueeze(0) # Shape (1, 2, H, W)
             # This is a very basic PE, SAM's PE is more complex. You might need a more sophisticated PE generation if this doesn't work well.
                 image_embeddings=image_embeddings,
+ masks, iou_preds, low_res_masks = self.sam.mask_decoder(
                 image_pe=pos_encoding.repeat(1, C // 2, 1, 1) if C > 1 else pos_encoding, # Repeat if C > 2, otherwise use as is (assuming C >= 2 for simple PE)
                 sparse_prompt_embeddings=sparse_embeddings_generated,
                 dense_prompt_embeddings=dense_embeddings_generated,
@@ -182,8 +183,6 @@ def _build_sam(
 
     # After instantiating the wrapper, put the whole model in training mode
     model.train()
-
-        return masks, iou_preds, low_res_masks
 
     if checkpoint is not None: # This part handles loading checkpoints into the original SAM model structure. Keep frozen except adapter
         with open(checkpoint, "rb") as f:
