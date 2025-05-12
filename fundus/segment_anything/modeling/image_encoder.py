@@ -12,6 +12,7 @@ from typing import Optional, Tuple, Type
 
 from segment_anything.modeling.adapter.Adapter import Adapter
 from segment_anything.modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
+from .adapter.SelfAttentionAdapter import SelfAttentionAdapter
 class MLPBlock(nn.Module):
     def __init__(
         self,
@@ -140,9 +141,9 @@ class ImageEncoderViT(nn.Module):
 
         self.scale_factor = 4
         self.embed_dim = embed_dim
-        self.l_adapter = LAdapter(self.scale_factor,
+ self.self_attention_adapter = SelfAttentionAdapter(self.scale_factor,
                                                 self.embed_dim,
-                                                depth)
+ depth)
         self.scale = 0.5
     def forward(self, x: torch.Tensor) :
         inp = x
