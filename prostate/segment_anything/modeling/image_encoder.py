@@ -143,13 +143,6 @@ class ImageEncoderViT(nn.Module):
             LayerNorm2d(out_chans),
         )
 
-        self.scale_factor = 4
-        self.embed_dim = embed_dim
-        self.adapter = None
-        if adapter is not None:  # the new adapter is instantiated with the correct parameters
-            self.adapter = adapter(input_dim=embed_dim, num_heads=embed_dim // 2)
-
-
 
     def forward(self, x: torch.Tensor):
         inp = x
@@ -171,15 +164,6 @@ class ImageEncoderViT(nn.Module):
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
             x = blk(x)#
-
-        if self.adapter is not None :
-            # Reshape for adapter if adapter is present
-            x = x.view(B, H * W, C)
-            residual = x # Capture residual before adapter
-            # Reshape back to [B, H, W, C] after adapter for neck
-            x = self.adapter(x) # the adapter is called here with x as an input.
-            x = residual + x # Add residual connection after adapter
-            x = x.view(B, H, W, C) # Reshape back to [B, H, W, C] for neck
 
         x = self.neck(x.permute(0, 3, 1, 2)) # the neck is called after the adapter.
 
@@ -234,8 +218,7 @@ class Block(nn.Module):
         self.window_size = window_size
 
         #####
-        self.channel_adapter = Adapter(dim, skip_connect=False)  # MLP-adapter, no skip connection
-        self.scale = 0.5
+        self.channel_adapter = MultiHeadGatedCrossAttentionAdapter(input_dim=dim, num_heads=num_heads)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:#, embedding_feature
         shortcut = x
@@ -253,7 +236,13 @@ class Block(nn.Module):
         ########
         x = shortcut + x
         xn = self.norm2(x)
-        x = x + self.mlp(xn) + self.scale * self.channel_adapter(xn)
+
+        # Apply the multi-head adapter
+        B, H, W, C = xn.shape
+        xn_flat = xn.view(B, H * W, C) # Reshape to [B, N, C]
+        adapter_out = self.channel_adapter(xn_flat) # Adapter expects [B, N, C]
+        adapter_out_reshaped = adapter_out.view(B, H, W, C) # Reshape back to [B, H, W, C]
+        x = x + self.mlp(xn) + adapter_out_reshaped # Add MLP and adapter output
 
         return x
 
