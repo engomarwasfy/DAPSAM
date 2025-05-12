@@ -175,9 +175,12 @@ class ImageEncoderViT(nn.Module):
         if self.adapter is not None :
             # Reshape for adapter if adapter is present
             x = x.view(B, H * W, C)
+            residual = x # Capture residual before adapter
             # Reshape back to [B, H, W, C] after adapter for neck
-            x = x.view(B, H, W, C)
             x = self.adapter(x) # the adapter is called here with x as an input.
+            x = residual + x # Add residual connection after adapter
+            x = x.view(B, H, W, C) # Reshape back to [B, H, W, C] for neck
+
         x = self.neck(x.permute(0, 3, 1, 2)) # the neck is called after the adapter.
 
         return x
