@@ -41,6 +41,7 @@ def build_sam_vit_l(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53
         encoder_depth=24,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[5, 11, 17, 23],
+ adapter=MultiHeadGatedCrossAttentionAdapter,
         checkpoint=checkpoint,
         num_classes=num_classes,
         image_size=image_size,
@@ -56,6 +57,7 @@ def build_sam_vit_b(image_size, num_classes, pixel_mean=[123.675, 116.28, 103.53
         encoder_depth=12,
         encoder_num_heads=12,
         encoder_global_attn_indexes=[2, 5, 8, 11],
+        adapter=MultiHeadGatedCrossAttentionAdapter,
         # adopt global attention at [3, 6, 9, 12] transform layer, else window attention layer
         checkpoint=checkpoint,
         num_classes=num_classes,
