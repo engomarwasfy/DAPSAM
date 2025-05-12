@@ -140,9 +140,9 @@ class ImageEncoderViT(nn.Module):
         )
 
         self.scale_factor = 4
-        self.embed_dim = embed_dim
- self.self_attention_adapter = SelfAttentionAdapter(self.scale_factor,
-                                                self.embed_dim,
+        self.embed_dim = embed_dim    
+        self.self_attention_adapter = SelfAttentionAdapter(self.scale_factor,
+                                                self.embed_dim,    
  depth)
         self.scale = 0.5
     def forward(self, x: torch.Tensor) :
