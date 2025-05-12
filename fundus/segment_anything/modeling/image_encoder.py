@@ -140,7 +140,7 @@ class ImageEncoderViT(nn.Module):
         )
 
         self.scale_factor = 4
-    def forward(self, x: torch.Tensor) :
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         inp = x
 
         x = self.patch_embed(x)
@@ -150,7 +150,9 @@ class ImageEncoderViT(nn.Module):
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
             
+            # Reshape for adapter
             if self.adapter:
+                x = x.view(B, H * W, -1)
                 x = self.adapter(x)
             x = blk(x)
         
