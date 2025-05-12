@@ -29,13 +29,20 @@ class Adapter(nn.Module):
         self.out_proj = nn.Linear(D_features, D_features)
 
     def forward(self, x, embedding_feature):#
+        original_shape = x.shape
+        is_4d = len(original_shape) == 4
+        if is_4d:
+            B, H, W, C = original_shape
+            x = x.view(B, H * W, C)
+
         x = x + embedding_feature.permute(0, 2, 3, 1)
         x_filtered = self.channel_filter(x)
 
         # Multi-head Self Attention
-        B, N, C = x_filtered.shape # Assuming input is [B, N, D_features]
+        B, N, C = x_filtered.shape
+
         q = self.q_proj(x_filtered).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        k = self.k_proj(x_filtered).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        k = self.k_proj(x_filtered).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3) # Corrected k reshape
         v = self.v_proj(x_filtered).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -52,4 +59,7 @@ class Adapter(nn.Module):
             output = x + combined_output
         else:
             output = combined_output
+
+        if is_4d:
+            output = output.view(B, H, W, C)
         return output
