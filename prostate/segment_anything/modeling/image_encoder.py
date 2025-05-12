@@ -11,7 +11,6 @@ import torch.nn.functional as F
 from typing import Optional, Tuple, Type
 
 from segment_anything.modeling.adapter.Adapter import Adapter
-from segment_anything.modeling.adapter.LAdapter import LAdapter
 
 from segment_anything.modeling.adapter.MultiHeadGatedCrossAttentionAdapter import MultiHeadGatedCrossAttentionAdapter
 
@@ -108,10 +107,6 @@ class ImageEncoderViT(nn.Module):
                 torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim), requires_grad=True
             )
 
-        self.adapter = None
-        if adapter is not None: # the new adapter is instantiated with the correct parameters
-            self.adapter = adapter(input_dim=embed_dim, num_heads = embed_dim // 2)
-
         self.blocks = nn.ModuleList()
         for i in range(depth):
             block = Block(
@@ -150,23 +145,26 @@ class ImageEncoderViT(nn.Module):
 
         self.scale_factor = 4
         self.embed_dim = embed_dim
-
-        self.l_adapter = LAdapter(self.scale_factor,
-                                                self.embed_dim,
-                                                depth)
-
-        # the adapter is initialized here.
-        self.scale = 0.5 
-
+        self.adapter = None
+        if adapter is not None:  # the new adapter is instantiated with the correct parameters
+            self.adapter = adapter(input_dim=embed_dim, num_heads=embed_dim // 2)
 
 
 
     def forward(self, x: torch.Tensor):
         inp = x
         x = self.patch_embed(x)
+        
+        # Capture H and W before the loop
+        B, H, W, C = x.shape
 
-        N, H, W, C = x.shape
         if self.pos_embed is not None:
+            # If using absolute positional embeddings, it's added after patch embedding
+            # The shape of x is still [B, H, W, C] here.
+            # The pos_embed should have a matching shape to be broadcast correctly.
+            # From the init, pos_embed is [1, img_size // patch_size, img_size // patch_size, embed_dim]
+            # which matches [1, H, W, C] assuming img_size // patch_size matches H and W.
+            # So the addition is fine and x remains [B, H, W, C].
             x = x + self.pos_embed
         
 
@@ -174,8 +172,9 @@ class ImageEncoderViT(nn.Module):
         for i, blk in enumerate(self.blocks):
             x = blk(x)#
 
-
         if self.adapter is not None :
+            # Reshape for adapter if adapter is present
+            x = x.view(B, H * W, C)
             x = self.adapter(x) # the adapter is called here with x as an input.
         x = self.neck(x.permute(0, 3, 1, 2)) # the neck is called after the adapter.
 
