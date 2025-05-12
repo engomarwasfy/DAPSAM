@@ -144,9 +144,9 @@ class ImageEncoderViT(nn.Module):
         inp = x
 
         x = self.patch_embed(x)
-        N, H, W, C = x.shape
         if self.pos_embed is not None:
             x = x + self.pos_embed
+        B, H, W, C = x.shape
         B, H, W = x.shape[0], x.shape[1], x.shape[2]
         for i, blk in enumerate(self.blocks):
             
@@ -154,6 +154,8 @@ class ImageEncoderViT(nn.Module):
             if self.adapter:
                 x = x.view(B, H * W, -1)
                 x = self.adapter(x)
+                # Reshape back to [B, H, W, C] for the block
+                x = x.view(B, H, W, C)
             x = blk(x)
         
         x = self.neck(x.permute(0, 3, 1, 2))
