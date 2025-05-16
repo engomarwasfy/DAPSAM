@@ -42,7 +42,7 @@ def trainer_prostate(args, model, snapshot_path, multimask_output, low_res):
     print('Training Phase')
     print(source_csv)
 
-    logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
+    logging.basicConfig(filename=snapshot_path + "/prostate_RUNMC.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
@@ -97,7 +97,9 @@ def trainer_prostate(args, model, snapshot_path, multimask_output, low_res):
     stop_epoch = args.stop_epoch
     max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
     logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
-    best_performance = 0.0
+    best_dice_score = 0.0
+    best_asd_score = float('inf')  # Initialize with infinity since lower ASD is better
+    best_epoch = 0
     iterator = (range(max_epoch))
     for epoch_num in iterator:
         logging.info('Epoch %d / %d' % (epoch_num, max_epoch))
@@ -137,17 +139,40 @@ def trainer_prostate(args, model, snapshot_path, multimask_output, low_res):
 
         save_interval = 20 # int(max_epoch/6)
         if (epoch_num + 1) % save_interval == 0:
-            #test
-            result_list = inference(args=args, epoch=epoch_num, snapshot_path=snapshot_path, test_loader=valid_loader, model=model, test_save_path=None)
-            writer.add_scalar('Valid_Dice', result_list[0], (epoch_num + 1) // save_interval)
-            writer.add_scalar('Valid_ASD', result_list[1], (epoch_num + 1) // save_interval)
+            model.eval()
+            with torch.no_grad():
+                #test
+                result_list = inference(args=args, epoch=epoch_num, snapshot_path=snapshot_path, test_loader=valid_loader, model=model, test_save_path=None)
+                mean_dice, mean_asd = result_list[0], result_list[1]
+                
+                # Original tensorboard logging
+                writer.add_scalar('Valid_Dice', mean_dice, (epoch_num + 1) // save_interval)
+                writer.add_scalar('Valid_ASD', mean_asd, (epoch_num + 1) // save_interval)
+                
+                # Print current scores with epoch
+                logging.info(f'Epoch {epoch_num} - Current Scores - Dice: {mean_dice:.4f}, ASD: {mean_asd:.4f}')
+                
+                # Check if current model is the best (based on dice score)
+                if mean_dice > best_dice_score:
+                    best_dice_score = mean_dice
+                    best_asd_score = mean_asd  # Store the ASD score from the best dice checkpoint
+                    best_epoch = epoch_num
+                    
+                    # Save best model
+                    best_model_path = os.path.join(snapshot_path, 'best_model.pth')
+                    torch.save(model.state_dict(), best_model_path)
+                    logging.info(f'New best model saved at epoch {epoch_num}!')
+                    logging.info(f'Best Model Scores (Epoch {best_epoch}) - Dice: {best_dice_score:.4f}, ASD: {best_asd_score:.4f}')
 
         if epoch_num >= max_epoch - 1 or epoch_num >= stop_epoch - 1:
-
-            # save model
+            # Save final model
             save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
             torch.save(model.state_dict(), save_mode_path)
-            logging.info("save model to {}".format(save_mode_path))
+            logging.info("save final model to {}".format(save_mode_path))
+            
+            # Print best model information with both metrics
+            logging.info(f'Training finished! Best model was at epoch {best_epoch}')
+            logging.info(f'Best Model Scores (Epoch {best_epoch}) - Dice: {best_dice_score:.4f}, ASD: {best_asd_score:.4f}')
             break
 
     writer.close()
