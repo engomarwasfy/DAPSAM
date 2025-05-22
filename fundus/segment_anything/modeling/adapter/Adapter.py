@@ -7,7 +7,7 @@ from segment_anything.modeling.adapter.Filter import ChannelFilter
 
 
 class Adapter(nn.Module):
-    def __init__(self, D_features, mlp_ratio=0.35, act_layer=nn.GELU, skip_connect=True, dropout_rate=0.1):
+    def __init__(self, D_features, mlp_ratio=0.25, act_layer=nn.GELU, skip_connect=True, dropout_rate=0.1):
         super().__init__()
         self.channel_filter = ChannelFilter()
 
